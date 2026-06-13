@@ -19,9 +19,9 @@ export function Header({ title, subtitle, onMenuClick, onRefresh, actions }: Hea
           >
             <HiOutlineMenu className="h-5 w-5" />
           </button>
-          <div className="min-w-0">
+            <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <h1 className="text-lg sm:text-xl font-bold text-foreground truncate">{title}</h1>
+              <h1 className="text-lg sm:text-xl font-bold text-foreground truncate font-display tracking-tight">{title}</h1>
               {onRefresh && (
                 <button
                   onClick={onRefresh}

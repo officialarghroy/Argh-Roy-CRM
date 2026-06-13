@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from 'react'
 import { cn } from '@/lib/utils'
+import { HiOutlineCheckCircle, HiOutlineXCircle } from 'react-icons/hi'
 
 type ToastType = 'success' | 'error'
 
@@ -48,13 +49,18 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           <div
             key={toast.id}
             className={cn(
-              'pointer-events-auto rounded-xl border px-4 py-3 text-sm shadow-lg backdrop-blur-sm',
+              'toast-enter pointer-events-auto flex items-start gap-3 rounded-xl border px-4 py-3 text-sm shadow-xl backdrop-blur-md',
               toast.type === 'success'
-                ? 'border-success/30 bg-success/15 text-success'
-                : 'border-danger/30 bg-danger/15 text-danger'
+                ? 'border-emerald-500/25 bg-black/80 text-foreground'
+                : 'border-danger/25 bg-black/80 text-foreground'
             )}
           >
-            {toast.message}
+            {toast.type === 'success' ? (
+              <HiOutlineCheckCircle className="h-5 w-5 shrink-0 text-emerald-400 mt-0.5" />
+            ) : (
+              <HiOutlineXCircle className="h-5 w-5 shrink-0 text-danger mt-0.5" />
+            )}
+            <span>{toast.message}</span>
           </div>
         ))}
       </div>

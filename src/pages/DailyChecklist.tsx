@@ -2,6 +2,22 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { addDays, subDays } from 'date-fns'
 import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import {
   HiOutlinePlus,
   HiOutlineTrash,
   HiOutlineChevronLeft,
@@ -9,17 +25,29 @@ import {
   HiOutlineDotsHorizontal,
   HiOutlineRefresh,
 } from 'react-icons/hi'
-import { Header } from '@/components/layout/Header'
+import { PageShell } from '@/components/layout/PageShell'
 import { usePageLayout } from '@/hooks/usePageLayout'
 import { useChecklist } from '@/hooks/useChecklist'
 import { useChecklistDayRollover } from '@/hooks/useChecklistDayRollover'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { GlassPanel } from '@/components/ui/GlassPanel'
+import { ProgressRing } from '@/components/ui/ProgressRing'
+import { EmptyState } from '@/components/ui/ListPrimitives'
 import { cn } from '@/lib/utils'
 import { isOverdue } from '@/lib/recurrence'
 import { formatChecklistDateLabel, getChecklistDate } from '@/lib/checklistDay'
 import { useToast } from '@/contexts/ToastContext'
-import type { DailyChecklistItem } from '@/types/database'
+import { formatSupabaseError } from '@/lib/checklistMode'
+import type { ChecklistMode, DailyChecklistItem } from '@/types/database'
+
+export interface ChecklistPageConfig {
+  mode?: ChecklistMode
+  pageTitle: string
+  subtitle: string
+  cardTitle: string
+  addPlaceholder: string
+}
 
 function ChecklistGlassCard({
   title,
@@ -41,9 +69,9 @@ function ChecklistGlassCard({
   children: React.ReactNode
 }) {
   return (
-    <div className="glass-card p-0">
-      <div className="flex items-center justify-between px-5 py-4 border-b border-white/12">
-        <h2 className="text-base font-semibold text-foreground tracking-tight">{title}</h2>
+    <GlassPanel
+      title={title}
+      action={
         <button
           type="button"
           onClick={onAdd}
@@ -52,22 +80,23 @@ function ChecklistGlassCard({
         >
           <HiOutlinePlus className="h-5 w-5" />
         </button>
-      </div>
-
-      {showAddInput && (
-        <form onSubmit={onAddSubmit} className="px-5 py-3 border-b border-white/12 bg-white/[0.02]">
-          <Input
-            autoFocus
-            placeholder={addPlaceholder}
-            value={addValue}
-            onChange={(e) => onAddChange(e.target.value)}
-            className="border-white/10 bg-black/20"
-          />
-        </form>
-      )}
-
+      }
+      toolbar={
+        showAddInput ? (
+          <form onSubmit={onAddSubmit}>
+            <Input
+              autoFocus
+              placeholder={addPlaceholder}
+              value={addValue}
+              onChange={(e) => onAddChange(e.target.value)}
+              className="border-white/10 bg-black/20"
+            />
+          </form>
+        ) : undefined
+      }
+    >
       {children}
-    </div>
+    </GlassPanel>
   )
 }
 
@@ -185,7 +214,7 @@ function ChecklistRowMenu({
   )
 }
 
-function ChecklistItemRow({
+function SortableChecklistItemRow({
   item,
   onToggle,
   onMakeDaily,
@@ -200,12 +229,35 @@ function ChecklistItemRow({
 }) {
   const overdue = isOverdue(item.scheduled_at, item.completed)
   const isDaily = Boolean(item.template_id)
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: item.id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  }
 
   return (
-    <li className="flex items-center gap-4 px-5 py-4 hover:bg-white/[0.02] transition-colors">
+    <li
+      ref={setNodeRef}
+      style={style}
+      className={cn(
+        'flex items-center gap-4 px-5 py-4 hover:bg-white/[0.02] transition-colors cursor-grab active:cursor-grabbing touch-none',
+        isDragging && 'relative z-10 opacity-60 bg-white/[0.04]'
+      )}
+      {...attributes}
+      {...listeners}
+    >
       <button
         type="button"
         onClick={onToggle}
+        onPointerDown={(e) => e.stopPropagation()}
         className={cn(
           'h-5 w-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-all',
           item.completed
@@ -246,17 +298,25 @@ function ChecklistItemRow({
         ) : null}
       </div>
 
-      <ChecklistRowMenu
-        isDaily={isDaily}
-        onMakeDaily={onMakeDaily}
-        onRemoveDaily={onRemoveDaily}
-        onDelete={onDelete}
-      />
+      <div onPointerDown={(e) => e.stopPropagation()}>
+        <ChecklistRowMenu
+          isDaily={isDaily}
+          onMakeDaily={onMakeDaily}
+          onRemoveDaily={onRemoveDaily}
+          onDelete={onDelete}
+        />
+      </div>
     </li>
   )
 }
 
-export function DailyChecklist() {
+export function ChecklistPage({
+  mode = 'daily',
+  pageTitle,
+  subtitle,
+  cardTitle,
+  addPlaceholder,
+}: ChecklistPageConfig) {
   const { openSidebar } = usePageLayout()
   const [date, setDate] = useState(getChecklistDate)
   const [newItem, setNewItem] = useState('')
@@ -265,13 +325,40 @@ export function DailyChecklist() {
   const {
     data: items = [],
     isLoading,
+    isError,
+    error,
     addItem,
     toggleItem,
     deleteItem,
     makeDaily,
     removeDaily,
+    reorderItems,
     refetch,
-  } = useChecklist(date)
+  } = useChecklist(date, mode)
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } })
+  )
+
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event
+      if (!over || active.id === over.id) return
+
+      const oldIndex = items.findIndex((i) => i.id === active.id)
+      const newIndex = items.findIndex((i) => i.id === over.id)
+      if (oldIndex === -1 || newIndex === -1) return
+
+      const orderedIds = arrayMove(
+        items.map((i) => i.id),
+        oldIndex,
+        newIndex
+      )
+      reorderItems.mutate(orderedIds)
+    },
+    [items, reorderItems]
+  )
 
   const handleDayRollover = useCallback(() => {
     setDate(getChecklistDate())
@@ -282,7 +369,6 @@ export function DailyChecklist() {
 
   const completed = items.filter((i) => i.completed).length
   const total = items.length
-  const percent = total > 0 ? Math.round((completed / total) * 100) : 0
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -297,15 +383,13 @@ export function DailyChecklist() {
   }
 
   return (
-    <div className="flex flex-col flex-1">
-      <Header
-        title="Daily Checklist"
-        subtitle="Add items for today. Mark any item to repeat every day."
-        onMenuClick={openSidebar}
-        onRefresh={() => refetch()}
-      />
-
-      <div className="flex-1 p-4 lg:p-6 space-y-5 max-w-2xl mx-auto w-full">
+    <PageShell
+      title={pageTitle}
+      subtitle={subtitle}
+      onMenuClick={openSidebar}
+      onRefresh={() => refetch()}
+      maxWidth="2xl"
+      stats={
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-1 glass-pill p-1">
             <Button variant="ghost" size="sm" onClick={() => setDate(subDays(date, 1))}>
@@ -318,75 +402,75 @@ export function DailyChecklist() {
               <HiOutlineChevronRight className="h-4 w-4" />
             </Button>
           </div>
-
-          <div className="relative h-11 w-11 shrink-0">
-            <svg className="h-11 w-11 -rotate-90" viewBox="0 0 36 36">
-              <circle cx="18" cy="18" r="15.5" fill="none" stroke="currentColor" className="text-white/10" strokeWidth="3" />
-              <circle
-                cx="18"
-                cy="18"
-                r="15.5"
-                fill="none"
-                stroke="currentColor"
-                className="text-emerald-400"
-                strokeWidth="3"
-                strokeDasharray={`${percent} 100`}
-                strokeLinecap="round"
-              />
-            </svg>
-            <span className="absolute inset-0 flex items-center justify-center text-[10px] font-semibold text-foreground">
-              {completed}/{total}
-            </span>
-          </div>
+          <ProgressRing done={completed} total={total || 1} />
         </div>
-
-        <ChecklistGlassCard
-          title="Daily Checklist"
+      }
+    >
+      <ChecklistGlassCard
+          title={cardTitle}
           onAdd={() => setShowAddItem((v) => !v)}
           showAddInput={showAddItem}
-          addPlaceholder="Add a checklist item..."
+          addPlaceholder={addPlaceholder}
           addValue={newItem}
           onAddChange={setNewItem}
           onAddSubmit={handleAdd}
         >
           {isLoading ? (
-            <div className="px-5 py-10 text-center text-muted text-sm">Loading...</div>
-          ) : items.length === 0 ? (
-            <div className="px-5 py-10 text-center text-muted text-sm">
-              No items yet. Tap + to add one.
+            <EmptyState message="Loading..." />
+          ) : isError ? (
+            <div className="px-5 py-10 text-center space-y-2">
+              <p className="text-sm text-danger">Could not load checklist</p>
+              <p className="text-xs text-muted">{formatSupabaseError(error)}</p>
+              <Button variant="ghost" size="sm" onClick={() => refetch()}>Try again</Button>
             </div>
+          ) : items.length === 0 ? (
+            <EmptyState message="No items yet. Tap + to add one." />
           ) : (
-            <ul>
-              {items.map((item) => (
-                <ChecklistItemRow
-                  key={item.id}
-                  item={item}
-                  onToggle={() =>
-                    toggleItem.mutate({ id: item.id, completed: !item.completed, title: item.title })
-                  }
-                  onMakeDaily={() => {
-                    makeDaily.mutate(item, {
-                      onSuccess: () => toast.success('Repeats every day'),
-                      onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to update'),
-                    })
-                  }}
-                  onRemoveDaily={() => {
-                    removeDaily.mutate(item, {
-                      onSuccess: () => toast.success('Removed from daily'),
-                      onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to update'),
-                    })
-                  }}
-                  onDelete={() => {
-                    deleteItem.mutate(item.id, {
-                      onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to delete'),
-                    })
-                  }}
-                />
-              ))}
-            </ul>
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
+                <ul>
+                  {items.map((item) => (
+                    <SortableChecklistItemRow
+                      key={item.id}
+                      item={item}
+                      onToggle={() =>
+                        toggleItem.mutate({ id: item.id, completed: !item.completed, title: item.title })
+                      }
+                      onMakeDaily={() => {
+                        makeDaily.mutate(item, {
+                          onSuccess: () => toast.success('Repeats every day'),
+                          onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to update'),
+                        })
+                      }}
+                      onRemoveDaily={() => {
+                        removeDaily.mutate(item, {
+                          onSuccess: () => toast.success('Removed from daily'),
+                          onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to update'),
+                        })
+                      }}
+                      onDelete={() => {
+                        deleteItem.mutate(item.id, {
+                          onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to delete'),
+                        })
+                      }}
+                    />
+                  ))}
+                </ul>
+              </SortableContext>
+            </DndContext>
           )}
         </ChecklistGlassCard>
-      </div>
-    </div>
+    </PageShell>
+  )
+}
+
+export function DailyChecklist() {
+  return (
+    <ChecklistPage
+      pageTitle="Daily Checklist"
+      subtitle="Add items for today. Mark any item to repeat every day."
+      cardTitle="Daily Checklist"
+      addPlaceholder="Add a checklist item..."
+    />
   )
 }

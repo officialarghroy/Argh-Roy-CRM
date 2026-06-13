@@ -4,8 +4,11 @@ export type UserRole = 'admin' | 'collaborator'
 export type EntityType = 'task' | 'checklist' | 'project' | 'sop' | 'checklist_template'
 export type ActivityAction = 'created' | 'updated' | 'completed' | 'uncompleted' | 'archived' | 'restored' | 'deleted' | 'scheduled' | 'synced'
 
+export type ChecklistMode = 'daily' | 'alpha'
+
 export interface SidebarPrefs {
   dailyChecklist: boolean
+  accountability: boolean
   myTasks: boolean
   projects: boolean
   sops: boolean
@@ -100,6 +103,7 @@ export interface DailyChecklistItem {
   date: string
   completed: boolean
   position: number
+  mode: ChecklistMode
   template_id: string | null
   scheduled_at: string | null
   completed_at: string | null
@@ -115,6 +119,7 @@ export interface ChecklistTemplate {
   recurrence_rule: string
   scheduled_time: string | null
   position: number
+  mode: ChecklistMode
   active: boolean
   created_at: string
   updated_at: string
@@ -194,6 +199,7 @@ export const TASK_STATUS_COLORS: Record<TaskStatus, string> = {
 export const DEFAULT_SIDEBAR_PREFS: SidebarPrefs = {
   dashboard: true,
   dailyChecklist: true,
+  accountability: true,
   myTasks: true,
   projects: true,
   calendar: true,

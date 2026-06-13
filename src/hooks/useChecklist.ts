@@ -4,7 +4,12 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import { logActivity } from '@/lib/activity'
 import { triggerGoogleSync } from '@/lib/googleCalendar'
-import type { DailyChecklistItem } from '@/types/database'
+import {
+  fetchChecklistItems,
+  generateChecklistForDate,
+  isChecklistModeSupported,
+} from '@/lib/checklistMode'
+import type { ChecklistMode, DailyChecklistItem } from '@/types/database'
 
 function scheduledTimeFromItem(scheduledAt: string | null): string | null {
   if (!scheduledAt) return null
@@ -14,23 +19,16 @@ function scheduledTimeFromItem(scheduledAt: string | null): string | null {
   return `${hours}:${minutes}:00`
 }
 
-export function useChecklist(date: Date) {
+export function useChecklist(date: Date, mode: ChecklistMode = 'daily') {
   const { user, googleSyncEnabled } = useAuth()
   const queryClient = useQueryClient()
   const dateStr = format(date, 'yyyy-MM-dd')
 
   const query = useQuery({
-    queryKey: ['checklist', dateStr],
+    queryKey: ['checklist', mode, dateStr],
     queryFn: async () => {
-      await supabase.rpc('generate_daily_checklist', { p_date: dateStr })
-
-      const { data, error } = await supabase
-        .from('daily_checklist_items')
-        .select('*')
-        .eq('date', dateStr)
-        .is('deleted_at', null)
-        .order('position')
-      if (error) throw error
+      await generateChecklistForDate(dateStr, mode)
+      const data = await fetchChecklistItems(dateStr, mode)
       return data as DailyChecklistItem[]
     },
     enabled: !!user,
@@ -45,16 +43,19 @@ export function useChecklist(date: Date) {
   const addItem = useMutation({
     mutationFn: async (title: string) => {
       const position = query.data?.length ?? 0
-      const { data, error } = await supabase.from('daily_checklist_items').insert({
+      const row: Record<string, unknown> = {
         user_id: user!.id,
         title,
         date: dateStr,
         position,
-      }).select().single()
+      }
+      if (await isChecklistModeSupported()) row.mode = mode
+
+      const { data, error } = await supabase.from('daily_checklist_items').insert(row).select().single()
       if (error) throw error
       await logActivity('checklist', data.id, 'created', { title })
     },
-    onSuccess: () => { invalidate(); if (googleSyncEnabled) triggerGoogleSync('full') },
+    onSuccess: () => { invalidate(); if (googleSyncEnabled) triggerGoogleSync('push') },
   })
 
   const toggleItem = useMutation({
@@ -67,7 +68,7 @@ export function useChecklist(date: Date) {
       if (error) throw error
       await logActivity('checklist', id, completed ? 'completed' : 'uncompleted', { title })
     },
-    onSuccess: () => { invalidate(); if (googleSyncEnabled) triggerGoogleSync('full') },
+    onSuccess: () => { invalidate(); if (googleSyncEnabled) triggerGoogleSync('push') },
   })
 
   const softDeleteItem = useMutation({
@@ -79,7 +80,7 @@ export function useChecklist(date: Date) {
       if (error) throw error
       await logActivity('checklist', id, 'deleted')
     },
-    onSuccess: () => { invalidate(); if (googleSyncEnabled) triggerGoogleSync('full') },
+    onSuccess: () => { invalidate(); if (googleSyncEnabled) triggerGoogleSync('push') },
   })
 
   const makeDaily = useMutation({
@@ -93,6 +94,7 @@ export function useChecklist(date: Date) {
           recurrence_rule: 'FREQ=DAILY',
           scheduled_time: scheduledTimeFromItem(item.scheduled_at),
           position,
+          ...(await isChecklistModeSupported() ? { mode } : {}),
           active: true,
         })
         .select()
@@ -106,7 +108,7 @@ export function useChecklist(date: Date) {
       if (error) throw error
       await logActivity('checklist_template', template.id, 'created', { title: item.title })
     },
-    onSuccess: () => { invalidate(); if (googleSyncEnabled) triggerGoogleSync('full') },
+    onSuccess: () => { invalidate(); if (googleSyncEnabled) triggerGoogleSync('push') },
   })
 
   const removeDaily = useMutation({
@@ -125,7 +127,51 @@ export function useChecklist(date: Date) {
       if (error) throw error
       await logActivity('checklist_template', item.template_id, 'deleted')
     },
-    onSuccess: () => { invalidate(); if (googleSyncEnabled) triggerGoogleSync('full') },
+    onSuccess: () => { invalidate(); if (googleSyncEnabled) triggerGoogleSync('push') },
+  })
+
+  const reorderItems = useMutation({
+    mutationFn: async (orderedIds: string[]) => {
+      const current = queryClient.getQueryData<DailyChecklistItem[]>(['checklist', mode, dateStr]) ?? []
+      await Promise.all(
+        orderedIds.map(async (id, index) => {
+          const { error } = await supabase
+            .from('daily_checklist_items')
+            .update({ position: index })
+            .eq('id', id)
+          if (error) throw error
+
+          const item = current.find((i) => i.id === id)
+          if (item?.template_id) {
+            await supabase
+              .from('checklist_templates')
+              .update({ position: index })
+              .eq('id', item.template_id)
+          }
+        })
+      )
+    },
+    onMutate: async (orderedIds) => {
+      await queryClient.cancelQueries({ queryKey: ['checklist', mode, dateStr] })
+      const previous = queryClient.getQueryData<DailyChecklistItem[]>(['checklist', mode, dateStr])
+      if (previous) {
+        const byId = new Map(previous.map((item) => [item.id, item]))
+        const reordered = orderedIds
+          .map((id) => byId.get(id))
+          .filter((item): item is DailyChecklistItem => !!item)
+          .map((item, index) => ({ ...item, position: index }))
+        queryClient.setQueryData(['checklist', mode, dateStr], reordered)
+      }
+      return { previous }
+    },
+    onError: (_err, _ids, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(['checklist', mode, dateStr], context.previous)
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['checklist'] })
+    },
   })
 
   return {
@@ -135,6 +181,8 @@ export function useChecklist(date: Date) {
     deleteItem: softDeleteItem,
     makeDaily,
     removeDaily,
+    reorderItems,
     dateStr,
+    mode,
   }
 }

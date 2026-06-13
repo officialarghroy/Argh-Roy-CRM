@@ -14,17 +14,19 @@ const SCOPES = [
 
 const SYNC_PAUSED_KEY = 'google_sync_paused'
 
-let afterSyncCallbacks: Array<() => void> = []
+type SyncDirection = 'push' | 'pull' | 'full'
 
-export function onAfterGoogleSync(fn: () => void) {
+let afterSyncCallbacks: Array<(direction: SyncDirection) => void> = []
+
+export function onAfterGoogleSync(fn: (direction: SyncDirection) => void) {
   afterSyncCallbacks.push(fn)
   return () => {
     afterSyncCallbacks = afterSyncCallbacks.filter((f) => f !== fn)
   }
 }
 
-function notifySyncComplete() {
-  afterSyncCallbacks.forEach((fn) => fn())
+function notifySyncComplete(direction: SyncDirection) {
+  afterSyncCallbacks.forEach((fn) => fn(direction))
 }
 
 export function getGoogleAuthUrl(): string {
@@ -79,10 +81,14 @@ export async function exchangeGoogleCode(code: string) {
 
 export async function syncGoogle(
   direction: 'push' | 'pull' | 'full' = 'full',
-  options?: { setupWatch?: boolean }
+  options?: { setupWatch?: boolean; incremental?: boolean }
 ) {
   const { data, error } = await supabase.functions.invoke('google-sync', {
-    body: { direction, setup_watch: options?.setupWatch ?? false },
+    body: {
+      direction,
+      setup_watch: options?.setupWatch ?? false,
+      incremental: options?.incremental ?? direction === 'pull',
+    },
   })
 
   if (error) {
@@ -95,7 +101,7 @@ export async function syncGoogle(
     throw new Error(data.error)
   }
 
-  notifySyncComplete()
+  notifySyncComplete(direction)
 
   return data as {
     success: boolean
@@ -124,14 +130,30 @@ export async function resumeGoogleSync() {
     .eq('provider', 'google_calendar')
 }
 
-type SyncDirection = 'push' | 'pull' | 'full'
+const LOCAL_EDIT_COOLDOWN_MS = 60_000
+let localEditUntil = 0
 
 let syncChain: Promise<void> = Promise.resolve()
 let pendingDirection: SyncDirection | null = null
 
+/** Skip background pulls after a local CRM edit so Google can accept the push. */
+export function markLocalGoogleEdit() {
+  localEditUntil = Date.now() + LOCAL_EDIT_COOLDOWN_MS
+}
+
+export function isGooglePullBlocked(): boolean {
+  return Date.now() < localEditUntil
+}
+
+/** Extend pull block when completing a task locally. */
+export function markTaskCompletedLocally() {
+  localEditUntil = Date.now() + LOCAL_EDIT_COOLDOWN_MS
+}
+
 function mergeDirections(current: SyncDirection, incoming: SyncDirection): SyncDirection {
-  if (current === 'full' || incoming === 'full') return 'full'
-  if (current === 'push' || incoming === 'push') return 'push'
+  if (incoming === 'full') return 'full'
+  if (current === 'full') return 'full'
+  if (incoming === 'push' || current === 'push') return 'push'
   return 'pull'
 }
 
@@ -147,8 +169,9 @@ export function runGoogleSync(direction: SyncDirection = 'push'): Promise<void> 
     while (pendingDirection) {
       const next = pendingDirection
       pendingDirection = null
+      if (next === 'pull' && isGooglePullBlocked()) continue
       try {
-        await syncGoogle(next)
+        await syncGoogle(next, { incremental: next === 'pull' })
       } catch (err) {
         console.error('[Google sync] failed:', err)
       }
@@ -158,8 +181,15 @@ export function runGoogleSync(direction: SyncDirection = 'push'): Promise<void> 
   return syncChain
 }
 
+/** Push local CRM changes to Google. Use `full` only for manual/initial sync. */
 export function triggerGoogleSync(direction: SyncDirection = 'push') {
+  if (direction === 'push') markLocalGoogleEdit()
   void runGoogleSync(direction)
+}
+
+export function triggerGoogleSyncAfterCompletion() {
+  markTaskCompletedLocally()
+  void runGoogleSync('push')
 }
 
 export async function getGoogleIntegration() {

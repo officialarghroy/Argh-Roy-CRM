@@ -1,5 +1,9 @@
 import { getAdmin } from '../_shared/google.ts'
 import { refreshTokenIfNeeded } from '../_shared/google.ts'
+import {
+  buildCrmTaskUpdateFromGoogle,
+  shouldApplyGoogleTaskUpdate,
+} from '../_shared/taskSync.ts'
 
 // Google Calendar push notification endpoint
 // Set GOOGLE_WEBHOOK_URL to: https://<project>.supabase.co/functions/v1/google-webhook
@@ -67,7 +71,7 @@ Deno.serve(async (req) => {
     // Pull Google Tasks changes
     if (taskListId && integration.tasks_sync_enabled !== false) {
       const tasksRes = await fetch(
-        `https://tasks.googleapis.com/tasks/v1/lists/${taskListId}/tasks?updatedMin=${integration.last_synced_at ?? new Date(0).toISOString()}&showCompleted=true`,
+        `https://tasks.googleapis.com/tasks/v1/lists/${taskListId}/tasks?updatedMin=${integration.last_synced_at ?? new Date(0).toISOString()}&showCompleted=true&showHidden=true`,
         { headers: { Authorization: `Bearer ${accessToken}` } }
       )
       const { items: gTasks } = await tasksRes.json()
@@ -77,18 +81,27 @@ Deno.serve(async (req) => {
 
         const { data: mapped } = await admin
           .from('google_tasks_sync_map')
-          .select('entity_id')
+          .select('entity_id, last_pushed_at')
           .eq('google_task_id', gTask.id)
           .maybeSingle()
 
         if (mapped) {
-          await admin.from('tasks').update({
-            title: gTask.title,
-            description: gTask.notes ?? null,
-            status: gTask.status === 'completed' ? 'done' : 'todo',
-            due_date: gTask.due ? gTask.due.split('T')[0] : null,
-            updated_at: new Date().toISOString(),
-          }).eq('id', mapped.entity_id)
+          const { data: crmTask } = await admin
+            .from('tasks')
+            .select('updated_at, status')
+            .eq('id', mapped.entity_id)
+            .maybeSingle()
+
+          if (!shouldApplyGoogleTaskUpdate(crmTask, gTask, { last_pushed_at: mapped.last_pushed_at })) continue
+
+          await admin.from('tasks').update(buildCrmTaskUpdateFromGoogle(gTask)).eq('id', mapped.entity_id)
+
+          if (gTask.updated) {
+            await admin.from('google_tasks_sync_map').update({
+              google_updated_at: gTask.updated,
+              last_synced_at: new Date().toISOString(),
+            }).eq('entity_id', mapped.entity_id).eq('user_id', userId)
+          }
         }
       }
     }

@@ -1,20 +1,28 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap");
 @import "tailwindcss";
 
 @theme {
   --color-background: #000000;
-  --color-surface: #0a0a0a;
-  --color-surface-hover: #161616;
-  --color-border: rgb(255 255 255 / 0.18);
-  --color-border-light: rgb(255 255 255 / 0.28);
-  --color-muted: #b4bcc8;
-  --color-foreground: #ffffff;
+  --color-surface: #0a0c10;
+  --color-surface-raised: #0f1218;
+  --color-surface-hover: #161a22;
+  --color-border: rgb(255 255 255 / 0.14);
+  --color-border-subtle: rgb(255 255 255 / 0.08);
+  --color-border-light: rgb(255 255 255 / 0.22);
+  --color-muted: #9ca3af;
+  --color-foreground: #f8fafc;
   --color-accent: #4d9bff;
   --color-accent-hover: #2b7fe8;
+  --color-accent-soft: rgb(77 155 255 / 0.12);
   --color-success: #34d399;
   --color-warning: #fbbf24;
   --color-danger: #f87171;
   --color-purple: #c084fc;
   --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-display: "Outfit", var(--font-sans);
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --duration-fast: 150ms;
+  --duration-normal: 220ms;
 }
 
 @layer base {
@@ -37,6 +45,11 @@
   #root {
     @apply bg-background;
     min-height: 100dvh;
+  }
+
+  h1, h2, h3, .font-display {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
   }
 
   input, textarea, select, button {
@@ -62,8 +75,8 @@
   }
 
   ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
   }
 
   ::-webkit-scrollbar-track {
@@ -71,38 +84,108 @@
   }
 
   ::-webkit-scrollbar-thumb {
-    background: rgb(255 255 255 / 0.22);
-    border-radius: 3px;
+    background: rgb(255 255 255 / 0.14);
+    border-radius: 999px;
   }
 }
 
 @layer components {
   .glass-card {
-    @apply rounded-2xl border border-white/18 bg-surface shadow-lg shadow-black/60;
+    @apply rounded-2xl border border-white/14 bg-surface-raised shadow-xl shadow-black/50;
   }
 
   .glass-inset {
-    @apply rounded-xl border border-white/18 bg-white/[0.04];
+    @apply rounded-xl border border-white/10 bg-white/[0.03];
   }
 
   .glass-pill {
-    @apply rounded-xl border border-white/18 bg-white/[0.04];
+    @apply rounded-xl border border-white/12 bg-white/[0.04];
   }
 
   .glass-divider {
-    @apply border-white/12;
+    @apply border-white/8;
+  }
+
+  .field-base {
+    @apply w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-foreground placeholder:text-muted/60 transition-[box-shadow,border-color] duration-150;
+  }
+
+  .field-base:focus {
+    @apply outline-none ring-2 ring-accent/25 border-accent/40;
+  }
+
+  .section-label {
+    @apply text-[11px] font-semibold uppercase tracking-wider text-muted;
+  }
+
+  .page-enter {
+    animation: page-enter var(--duration-normal) var(--ease-out);
+  }
+
+  @keyframes page-enter {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px) scale(0.98);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  .toast-enter {
+    animation: toast-in var(--duration-normal) var(--ease-out);
   }
 
   .app-top-bar {
-    @apply flex shrink-0 items-center border-b border-white/18 bg-black;
+    @apply flex shrink-0 items-center border-b border-white/10 bg-black/75 backdrop-blur-xl;
     min-height: 3.75rem;
     padding-top: env(safe-area-inset-top, 0px);
   }
 
   @media (min-width: 1024px) {
     .app-top-bar {
-      min-height: 5.5rem;
+      min-height: 4.5rem;
     }
+  }
+
+  .app-ambient {
+    pointer-events: none;
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    overflow: hidden;
+  }
+
+  .app-ambient::before {
+    content: "";
+    position: absolute;
+    top: -20%;
+    left: -10%;
+    width: 50%;
+    height: 50%;
+    background: radial-gradient(circle, rgb(77 155 255 / 0.07) 0%, transparent 70%);
+  }
+
+  .app-ambient::after {
+    content: "";
+    position: absolute;
+    bottom: -15%;
+    right: -5%;
+    width: 45%;
+    height: 45%;
+    background: radial-gradient(circle, rgb(52 211 153 / 0.04) 0%, transparent 70%);
   }
 
   .safe-area-bottom {

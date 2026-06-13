@@ -3,6 +3,7 @@ import { addMinutes, parseISO, startOfMonth, endOfMonth, addMonths } from 'date-
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import { isOverdue } from '@/lib/recurrence'
+import { isChecklistModeSupported } from '@/lib/checklistMode'
 import type { CalendarEvent, Task } from '@/types/database'
 
 export function useCalendarEvents(viewDate: Date, options?: { enabled?: boolean }) {
@@ -13,6 +14,20 @@ export function useCalendarEvents(viewDate: Date, options?: { enabled?: boolean 
   return useQuery({
     queryKey: ['calendar-events', rangeStart.toISOString(), rangeEnd.toISOString()],
     queryFn: async () => {
+      const modeSupported = await isChecklistModeSupported()
+
+      let checklistQuery = supabase
+        .from('daily_checklist_items')
+        .select('*')
+        .is('deleted_at', null)
+        .not('scheduled_at', 'is', null)
+        .gte('scheduled_at', rangeStart.toISOString())
+        .lte('scheduled_at', rangeEnd.toISOString())
+
+      if (modeSupported) {
+        checklistQuery = checklistQuery.eq('mode', 'daily')
+      }
+
       const [tasksRes, checklistRes] = await Promise.all([
         supabase
           .from('tasks')
@@ -21,13 +36,7 @@ export function useCalendarEvents(viewDate: Date, options?: { enabled?: boolean 
           .not('scheduled_at', 'is', null)
           .gte('scheduled_at', rangeStart.toISOString())
           .lte('scheduled_at', rangeEnd.toISOString()),
-        supabase
-          .from('daily_checklist_items')
-          .select('*')
-          .is('deleted_at', null)
-          .not('scheduled_at', 'is', null)
-          .gte('scheduled_at', rangeStart.toISOString())
-          .lte('scheduled_at', rangeEnd.toISOString()),
+        checklistQuery,
       ])
 
       const events: CalendarEvent[] = []

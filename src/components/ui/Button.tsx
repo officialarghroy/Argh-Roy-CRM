@@ -16,9 +16,9 @@ export function Button({
   return (
     <button
       className={cn(
-        'inline-flex items-center justify-center gap-2 rounded-lg border-0 font-medium outline-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-white/20',
+        'inline-flex items-center justify-center gap-2 rounded-lg border-0 font-medium outline-none transition-all duration-150 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-white/20',
         {
-          'bg-accent text-white hover:bg-accent-hover': variant === 'primary',
+          'bg-accent text-white hover:bg-accent-hover shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]': variant === 'primary',
           'glass-inset text-foreground hover:bg-white/8': variant === 'secondary',
           'text-muted hover:text-foreground hover:bg-white/8': variant === 'ghost',
           'bg-danger/10 text-danger hover:bg-danger/20': variant === 'danger',

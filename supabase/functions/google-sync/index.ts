@@ -8,6 +8,12 @@ import {
   pickTaskListForPush,
   googleApi,
 } from '../_shared/google.ts'
+import {
+  buildCrmTaskUpdateFromGoogle,
+  crmStatusToGoogle,
+  shouldApplyGoogleTaskUpdate,
+  type GoogleTaskPayload,
+} from '../_shared/taskSync.ts'
 
 interface CrmTask {
   id: string
@@ -20,6 +26,8 @@ interface CrmTask {
   duration_minutes: number | null
   deleted_at: string | null
   is_recurring_template: boolean
+  completed_at: string | null
+  google_task_id: string | null
 }
 
 interface GoogleEvent {
@@ -31,13 +39,8 @@ interface GoogleEvent {
   end?: { dateTime?: string; date?: string }
 }
 
-interface GoogleTask {
+interface GoogleTask extends GoogleTaskPayload {
   id: string
-  title?: string
-  notes?: string
-  status?: string
-  due?: string
-  deleted?: boolean
 }
 
 function toGoogleDue(task: CrmTask): string | undefined {
@@ -161,12 +164,21 @@ async function syncCalendarPull(
     if (!scheduledAt) continue
 
     if (mapped) {
-      await admin.from('tasks').update({
+      const { data: crmTask } = await admin
+        .from('tasks')
+        .select('status')
+        .eq('id', mapped.entity_id)
+        .maybeSingle()
+
+      const calendarUpdate: Record<string, unknown> = {
         title: gEvent.summary ?? 'Untitled',
         scheduled_at: scheduledAt,
         description: gEvent.description ?? null,
-        updated_at: new Date().toISOString(),
-      }).eq('id', mapped.entity_id)
+      }
+      if (crmTask?.status !== 'done') {
+        calendarUpdate.updated_at = new Date().toISOString()
+      }
+      await admin.from('tasks').update(calendarUpdate).eq('id', mapped.entity_id)
     } else {
       const { data: newTask, error: insertErr } = await admin.from('tasks').insert({
         user_id: userId,
@@ -197,6 +209,25 @@ async function syncCalendarPull(
   return pulled
 }
 
+async function updateTaskSyncMap(
+  admin: ReturnType<typeof createClient>,
+  userId: string,
+  entityId: string,
+  googleTask: GoogleTask,
+  pushed: boolean
+) {
+  const now = new Date().toISOString()
+  const patch: Record<string, string> = {
+    last_synced_at: now,
+  }
+  if (googleTask.updated) patch.google_updated_at = googleTask.updated
+  if (pushed) patch.last_pushed_at = now
+
+  await admin.from('google_tasks_sync_map').update(patch)
+    .eq('user_id', userId)
+    .eq('entity_id', entityId)
+}
+
 async function syncTasksPush(
   admin: ReturnType<typeof createClient>,
   userId: string,
@@ -213,6 +244,8 @@ async function syncTasksPush(
     .eq('is_recurring_template', false)
 
   for (const task of (tasks ?? []) as CrmTask[]) {
+    let googleTaskId: string | null = null
+
     const { data: existing } = await admin
       .from('google_tasks_sync_map')
       .select('google_task_id')
@@ -220,21 +253,48 @@ async function syncTasksPush(
       .eq('entity_id', task.id)
       .maybeSingle()
 
+    googleTaskId = existing?.google_task_id ?? task.google_task_id ?? null
+
     const taskBody: Record<string, unknown> = {
       title: task.title,
       notes: task.description ?? '',
-      status: task.status === 'done' ? 'completed' : 'needsAction',
+      status: crmStatusToGoogle(task.status),
     }
     const due = toGoogleDue(task)
     if (due) taskBody.due = due
+    if (task.status === 'done') {
+      taskBody.completed = task.completed_at ?? new Date().toISOString()
+    }
 
-    if (existing?.google_task_id) {
-      const { error } = await googleApi(
-        `https://tasks.googleapis.com/tasks/v1/lists/${taskListId}/tasks/${existing.google_task_id}`,
+    if (googleTaskId) {
+      const { data: gTask, error } = await googleApi<GoogleTask>(
+        `https://tasks.googleapis.com/tasks/v1/lists/${taskListId}/tasks/${googleTaskId}`,
         accessToken,
         { method: 'PATCH', body: JSON.stringify(taskBody) }
       )
-      if (error) errors.push(`Tasks update: ${error}`)
+      if (error) {
+        errors.push(`Tasks update: ${error}`)
+      } else if (gTask) {
+        if (!existing?.google_task_id) {
+          const now = new Date().toISOString()
+          await admin.from('google_tasks_sync_map').upsert({
+            user_id: userId,
+            entity_id: task.id,
+            google_task_id: gTask.id,
+            google_task_list_id: taskListId,
+            last_synced_at: now,
+            last_pushed_at: now,
+            google_updated_at: gTask.updated ?? now,
+          }, { onConflict: 'user_id,entity_id' })
+        } else {
+          await updateTaskSyncMap(admin, userId, task.id, gTask, true)
+        }
+        await admin.from('tasks').update({
+          google_task_id: gTask.id,
+          google_task_list_id: taskListId,
+        }).eq('id', task.id)
+        pushed++
+      }
     } else {
       const { data: gTask, error } = await googleApi<GoogleTask>(
         `https://tasks.googleapis.com/tasks/v1/lists/${taskListId}/tasks`,
@@ -246,12 +306,15 @@ async function syncTasksPush(
         continue
       }
       if (gTask?.id) {
+        const now = new Date().toISOString()
         await admin.from('google_tasks_sync_map').upsert({
           user_id: userId,
           entity_id: task.id,
           google_task_id: gTask.id,
           google_task_list_id: taskListId,
-          last_synced_at: new Date().toISOString(),
+          last_synced_at: now,
+          last_pushed_at: now,
+          google_updated_at: gTask.updated ?? now,
         }, { onConflict: 'user_id,entity_id' })
         await admin.from('tasks').update({
           google_task_id: gTask.id,
@@ -286,13 +349,16 @@ async function syncTasksPull(
   userId: string,
   accessToken: string,
   taskListId: string,
-  errors: string[]
+  errors: string[],
+  options?: { updatedMin?: string | null }
 ) {
   let pulled = 0
-  const { data, error } = await googleApi<{ items?: GoogleTask[] }>(
-    `https://tasks.googleapis.com/tasks/v1/lists/${taskListId}/tasks?showCompleted=true&showDeleted=true&showHidden=true&maxResults=100`,
-    accessToken
-  )
+  let url = `https://tasks.googleapis.com/tasks/v1/lists/${taskListId}/tasks?showCompleted=true&showDeleted=true&showHidden=true&maxResults=100`
+  if (options?.updatedMin) {
+    url += `&updatedMin=${encodeURIComponent(options.updatedMin)}`
+  }
+
+  const { data, error } = await googleApi<{ items?: GoogleTask[] }>(url, accessToken)
   if (error) {
     errors.push(`Tasks pull: ${error}`)
     return 0
@@ -303,7 +369,7 @@ async function syncTasksPull(
 
     const { data: mapped } = await admin
       .from('google_tasks_sync_map')
-      .select('entity_id')
+      .select('entity_id, last_pushed_at')
       .eq('user_id', userId)
       .eq('google_task_id', gTask.id)
       .eq('google_task_list_id', taskListId)
@@ -318,21 +384,22 @@ async function syncTasksPull(
 
     if (!gTask.title) continue
 
-    const dueDate = gTask.due ? gTask.due.split('T')[0] : null
-    const scheduledAt = gTask.due ?? null
-    const status = gTask.status === 'completed' ? 'done' : 'todo'
-
     if (mapped) {
-      await admin.from('tasks').update({
-        title: gTask.title,
-        description: gTask.notes ?? null,
-        due_date: dueDate,
-        scheduled_at: scheduledAt,
-        status,
-        completed_at: status === 'done' ? new Date().toISOString() : null,
-        updated_at: new Date().toISOString(),
-      }).eq('id', mapped.entity_id)
+      const { data: crmTask } = await admin
+        .from('tasks')
+        .select('updated_at, status')
+        .eq('id', mapped.entity_id)
+        .maybeSingle()
+
+      if (!shouldApplyGoogleTaskUpdate(crmTask, gTask, { last_pushed_at: mapped.last_pushed_at })) continue
+
+      await admin.from('tasks').update(buildCrmTaskUpdateFromGoogle(gTask)).eq('id', mapped.entity_id)
+      await updateTaskSyncMap(admin, userId, mapped.entity_id, gTask, false)
     } else {
+      const status = gTask.status === 'completed' ? 'done' : 'todo'
+      const dueDate = gTask.due ? gTask.due.split('T')[0] : null
+      const scheduledAt = gTask.due ?? null
+
       const { data: newTask, error: insertErr } = await admin.from('tasks').insert({
         user_id: userId,
         title: gTask.title,
@@ -340,6 +407,7 @@ async function syncTasksPull(
         due_date: dueDate,
         scheduled_at: scheduledAt,
         status,
+        completed_at: status === 'done' ? new Date().toISOString() : null,
         google_task_id: gTask.id,
         google_task_list_id: taskListId,
       }).select().single()
@@ -354,6 +422,7 @@ async function syncTasksPull(
           entity_id: newTask.id,
           google_task_id: gTask.id,
           google_task_list_id: taskListId,
+          google_updated_at: gTask.updated ?? new Date().toISOString(),
         })
         pulled++
       }
@@ -372,6 +441,7 @@ Deno.serve(async (req) => {
     const admin = getAdmin()
     const body = await req.json().catch(() => ({}))
     const direction = body.direction ?? 'full'
+    const incremental = body.incremental === true
     const errors: string[] = []
 
     const { data: integration } = await admin
@@ -408,10 +478,15 @@ Deno.serve(async (req) => {
     if (direction === 'pull' || direction === 'full') {
       calendarPulled = await syncCalendarPull(admin, user.id, accessToken, calendarId, errors)
       if (integration.tasks_sync_enabled !== false) {
-        const listsToPull = taskLists.length > 0 ? taskLists : [{ id: taskListId, title: 'Tasks' }]
-        for (const list of listsToPull) {
-          tasksPulled += await syncTasksPull(admin, user.id, accessToken, list.id, errors)
-        }
+        const updatedMin = incremental ? (integration.last_synced_at ?? null) : null
+        tasksPulled = await syncTasksPull(
+          admin,
+          user.id,
+          accessToken,
+          taskListId,
+          errors,
+          { updatedMin }
+        )
       }
     }
 

@@ -7,7 +7,7 @@ import {
   HiOutlineClock,
   HiOutlineArrowRight,
 } from 'react-icons/hi'
-import { Header } from '@/components/layout/Header'
+import { PageShell } from '@/components/layout/PageShell'
 import { usePageLayout } from '@/hooks/usePageLayout'
 import { useAuth } from '@/contexts/AuthContext'
 import { useChecklist } from '@/hooks/useChecklist'
@@ -15,9 +15,11 @@ import { getChecklistDate } from '@/lib/checklistDay'
 import { useTasks } from '@/hooks/useTasks'
 import { useActivity } from '@/hooks/useActivity'
 import { useCalendarEvents } from '@/hooks/useCalendarEvents'
-import { Card } from '@/components/ui/Card'
+import { GlassPanel } from '@/components/ui/GlassPanel'
 import { ProgressBar } from '@/components/ui/ProgressBar'
+import { ProgressRing } from '@/components/ui/ProgressRing'
 import { Badge } from '@/components/ui/Badge'
+import { StatTile, EmptyState } from '@/components/ui/ListPrimitives'
 import { isOverdue } from '@/lib/recurrence'
 import { cn } from '@/lib/utils'
 
@@ -35,6 +37,7 @@ export function Dashboard() {
   const activeTasks = tasks.filter((t) => t.status !== 'done')
   const overdueTasks = activeTasks.filter((t) => isOverdue(t.scheduled_at, false, t.status))
   const todayEvents = events.filter((e) => isToday(e.start)).slice(0, 5)
+  const doneCount = tasks.filter((t) => t.status === 'done').length
 
   const greeting = () => {
     const h = today.getHours()
@@ -43,130 +46,140 @@ export function Dashboard() {
     return 'Good evening'
   }
 
+  const upcoming = [...overdueTasks, ...activeTasks.filter((t) => !isOverdue(t.scheduled_at, false, t.status))].slice(0, 6)
+
   return (
-    <div className="flex flex-col flex-1">
-      <Header
-        title="Dashboard"
-        subtitle={`${greeting()}, ${profile?.display_name ?? 'there'}`}
-        onMenuClick={openSidebar}
-      />
-
-      <div className="flex-1 p-4 lg:p-6 space-y-6">
-        <div className={cn(
-          'grid grid-cols-1 sm:grid-cols-2 gap-4',
-          canAccessCalendar ? 'xl:grid-cols-4' : 'xl:grid-cols-3'
-        )}>
-          <Card className="bg-gradient-to-br from-accent/10 to-transparent border-accent/20">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="p-2 rounded-lg bg-accent/20 text-accent">
-                <HiOutlineClipboardList className="h-5 w-5" />
-              </div>
-              <span className="text-sm text-muted">Today's checklist</span>
-            </div>
-            <p className="text-2xl font-bold">{checklistDone}/{checklist.length}</p>
-            <ProgressBar value={checklistDone} max={checklist.length || 1} className="mt-3" />
-          </Card>
-
-          <Card className="bg-gradient-to-br from-blue-500/10 to-transparent border-blue-500/20">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="p-2 rounded-lg bg-blue-500/20 text-blue-400">
-                <HiOutlineCheckCircle className="h-5 w-5" />
-              </div>
-              <span className="text-sm text-muted">Active tasks</span>
-            </div>
-            <p className="text-2xl font-bold">{activeTasks.length}</p>
-            <Link to="/tasks" className="text-xs text-accent hover:underline mt-2 inline-flex items-center gap-1">
+    <PageShell
+      title="Dashboard"
+      subtitle={`${greeting()}, ${profile?.display_name ?? 'there'}`}
+      onMenuClick={openSidebar}
+      maxWidth="4xl"
+      stats={
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="section-label">Today at a glance</p>
+            <p className="text-lg font-semibold text-foreground font-display mt-1">
+              {activeTasks.length} active · {overdueTasks.length} overdue
+            </p>
+          </div>
+          <ProgressRing done={doneCount} total={tasks.length || 1} />
+        </div>
+      }
+    >
+      <div className={cn(
+        'grid grid-cols-2 gap-3',
+        canAccessCalendar ? 'lg:grid-cols-4' : 'lg:grid-cols-3'
+      )}>
+        <StatTile
+          label="Checklist"
+          value={`${checklistDone}/${checklist.length}`}
+          accent="accent"
+          icon={<HiOutlineClipboardList className="h-4 w-4" />}
+          hint={<ProgressBar value={checklistDone} max={checklist.length || 1} className="h-1" />}
+        />
+        <StatTile
+          label="Active tasks"
+          value={activeTasks.length}
+          accent="default"
+          icon={<HiOutlineCheckCircle className="h-4 w-4" />}
+          hint={
+            <Link to="/tasks" className="text-xs text-accent hover:text-accent-hover inline-flex items-center gap-1">
               View all <HiOutlineArrowRight className="h-3 w-3" />
             </Link>
-          </Card>
-
-          <Card className={cn(
-            'bg-gradient-to-br to-transparent',
-            overdueTasks.length > 0 ? 'from-danger/10 border-danger/30' : 'from-white/[0.02] border-white/10'
-          )}>
-            <div className="flex items-center gap-3 mb-3">
-              <div className={cn('p-2 rounded-lg', overdueTasks.length > 0 ? 'bg-danger/20 text-danger' : 'bg-white/5 text-muted')}>
-                <HiOutlineClock className="h-5 w-5" />
-              </div>
-              <span className="text-sm text-muted">Overdue</span>
-            </div>
-            <p className="text-2xl font-bold">{overdueTasks.length}</p>
-            {overdueTasks.length > 0 && (
-              <p className="text-xs text-danger mt-1">Needs attention</p>
-            )}
-          </Card>
-
-          {canAccessCalendar && (
-            <Card className="bg-gradient-to-br from-purple-500/10 to-transparent border-purple-500/20">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="p-2 rounded-lg bg-purple-500/20 text-purple-400">
-                  <HiOutlineCalendar className="h-5 w-5" />
-                </div>
-                <span className="text-sm text-muted">Today's events</span>
-              </div>
-              <p className="text-2xl font-bold">{todayEvents.length}</p>
-              <Link to="/calendar" className="text-xs text-accent hover:underline mt-2 inline-flex items-center gap-1">
-                Open calendar <HiOutlineArrowRight className="h-3 w-3" />
+          }
+        />
+        <StatTile
+          label="Overdue"
+          value={overdueTasks.length}
+          accent={overdueTasks.length > 0 ? 'danger' : 'default'}
+          icon={<HiOutlineClock className="h-4 w-4" />}
+          hint={overdueTasks.length > 0 ? <span className="text-xs text-danger">Needs attention</span> : undefined}
+        />
+        {canAccessCalendar && (
+          <StatTile
+            label="Today's events"
+            value={todayEvents.length}
+            accent="purple"
+            icon={<HiOutlineCalendar className="h-4 w-4" />}
+            hint={
+              <Link to="/calendar" className="text-xs text-accent hover:text-accent-hover inline-flex items-center gap-1">
+                Calendar <HiOutlineArrowRight className="h-3 w-3" />
               </Link>
-            </Card>
-          )}
-        </div>
+            }
+          />
+        )}
+      </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold">Overdue & upcoming</h2>
-              <Link to="/tasks" className="text-xs text-accent hover:underline">See all</Link>
-            </div>
-            <div className="space-y-2">
-              {[...overdueTasks, ...activeTasks.filter((t) => !isOverdue(t.scheduled_at, false, t.status))].slice(0, 5).map((task) => (
-                <div key={task.id} className="flex items-center gap-3 p-3 glass-inset">
-                  <div className={cn(
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <GlassPanel
+          title="Overdue & upcoming"
+          toolbar={
+            <Link to="/tasks" className="text-xs text-accent hover:text-accent-hover -mt-2 block text-right">
+              See all tasks
+            </Link>
+          }
+        >
+          {upcoming.length === 0 ? (
+            <EmptyState message="No active tasks — you're all caught up" />
+          ) : (
+            <ul>
+              {upcoming.map((task) => (
+                <li
+                  key={task.id}
+                  className="flex items-center gap-3 px-5 py-3 border-b border-white/[0.06] last:border-b-0 hover:bg-white/[0.02] transition-colors"
+                >
+                  <span className={cn(
                     'h-2 w-2 rounded-full shrink-0',
                     isOverdue(task.scheduled_at, false, task.status) ? 'bg-danger' : 'bg-accent'
                   )} />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{task.title}</p>
                     {task.scheduled_at && (
-                      <p className="text-xs text-muted">{format(parseISO(task.scheduled_at), 'MMM d, h:mm a')}</p>
+                      <p className="text-[11px] text-muted mt-0.5">
+                        {format(parseISO(task.scheduled_at), 'MMM d · h:mm a')}
+                      </p>
                     )}
                   </div>
                   {isOverdue(task.scheduled_at, false, task.status) && (
                     <Badge variant="warning">Overdue</Badge>
                   )}
-                </div>
+                </li>
               ))}
-              {activeTasks.length === 0 && (
-                <p className="text-sm text-muted text-center py-4">No active tasks</p>
-              )}
-            </div>
-          </Card>
+            </ul>
+          )}
+        </GlassPanel>
 
-          <Card>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold">Recently completed</h2>
-              <Link to="/history" className="text-xs text-accent hover:underline">Full history</Link>
-            </div>
-            <div className="space-y-3">
+        <GlassPanel
+          title="Recently completed"
+          toolbar={
+            <Link to="/history" className="text-xs text-accent hover:text-accent-hover -mt-2 block text-right">
+              Full history
+            </Link>
+          }
+        >
+          {activity.length === 0 ? (
+            <EmptyState message="No completed tasks yet" />
+          ) : (
+            <ul>
               {activity.map((entry) => (
-                <div key={entry.id} className="flex gap-3 text-sm">
-                  <span className="text-muted shrink-0 w-20">
+                <li
+                  key={entry.id}
+                  className="flex gap-3 px-5 py-3 border-b border-white/[0.06] last:border-b-0 text-sm"
+                >
+                  <span className="text-muted shrink-0 w-16 tabular-nums text-[11px] pt-0.5">
                     {format(parseISO(entry.created_at), 'MMM d')}
                   </span>
-                  <span className="text-foreground truncate">
+                  <span className="text-foreground truncate flex-1">
                     {entry.snapshot?.title != null
                       ? String(entry.snapshot.title)
                       : 'Completed task'}
                   </span>
-                </div>
+                </li>
               ))}
-              {activity.length === 0 && (
-                <p className="text-sm text-muted text-center py-4">No completed tasks yet</p>
-              )}
-            </div>
-          </Card>
-        </div>
+            </ul>
+          )}
+        </GlassPanel>
       </div>
-    </div>
+    </PageShell>
   )
 }

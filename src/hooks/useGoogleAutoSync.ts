@@ -7,10 +7,11 @@ import {
   resumeGoogleSync,
   isGoogleCalendarConfigured,
   isGoogleSyncPaused,
+  isGooglePullBlocked,
   onAfterGoogleSync,
 } from '@/lib/googleCalendar'
 
-const PULL_INTERVAL_MS = 5_000
+const PULL_INTERVAL_MS = 30_000
 
 export function useGoogleAutoSync() {
   const { user, googleSyncEnabled } = useAuth()
@@ -18,11 +19,13 @@ export function useGoogleAutoSync() {
   const initialSyncDone = useRef(false)
 
   useEffect(() => {
-    const unregister = onAfterGoogleSync(() => {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] })
-      queryClient.invalidateQueries({ queryKey: ['calendar-events'] })
-      queryClient.invalidateQueries({ queryKey: ['checklist'] })
-      queryClient.invalidateQueries({ queryKey: ['activity'] })
+    const unregister = onAfterGoogleSync((direction) => {
+      if (direction === 'pull' || direction === 'full') {
+        queryClient.invalidateQueries({ queryKey: ['tasks'] })
+        queryClient.invalidateQueries({ queryKey: ['calendar-events'] })
+        queryClient.invalidateQueries({ queryKey: ['checklist'] })
+        queryClient.invalidateQueries({ queryKey: ['activity'] })
+      }
     })
     return unregister
   }, [queryClient])
@@ -31,6 +34,7 @@ export function useGoogleAutoSync() {
     if (!user || !googleSyncEnabled || !isGoogleCalendarConfigured) return
 
     const runPull = () => {
+      if (isGooglePullBlocked()) return
       void getGoogleIntegration().then((integration) => {
         if (!integration) return
         if (integration.sync_enabled === false || integration.tasks_sync_enabled === false) return

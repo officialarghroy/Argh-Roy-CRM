@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import { logActivity } from '@/lib/activity'
-import { triggerGoogleSync } from '@/lib/googleCalendar'
+import { triggerGoogleSync, triggerGoogleSyncAfterCompletion } from '@/lib/googleCalendar'
 import type { Task, TaskStatus } from '@/types/database'
 
 export function useTasks(
@@ -70,7 +70,7 @@ export function useTasks(
       await logActivity('task', data.id, 'created', { title: task.title })
       return data
     },
-    onSuccess: () => { invalidate(); if (googleSyncEnabled) triggerGoogleSync('full') },
+    onSuccess: () => { invalidate(); if (googleSyncEnabled) triggerGoogleSync('push') },
   })
 
   const updateTask = useMutation({
@@ -94,7 +94,46 @@ export function useTasks(
         await logActivity('task', id, 'updated', payload as Record<string, unknown>)
       }
     },
-    onSuccess: () => { invalidate(); if (googleSyncEnabled) triggerGoogleSync('full') },
+    onMutate: async ({ id, ...updates }) => {
+      await queryClient.cancelQueries({ queryKey: ['tasks'] })
+      const previous = queryClient.getQueriesData<Task[]>({ queryKey: ['tasks'] })
+
+      queryClient.setQueriesData<Task[]>({ queryKey: ['tasks'] }, (old) => {
+        if (!old) return old
+        return old.map((task) => {
+          if (task.id !== id) return task
+          const next = { ...task, ...updates }
+          if (updates.status === 'done' && !updates.completed_at) {
+            next.completed_at = new Date().toISOString()
+            next.status = 'done'
+          }
+          if (updates.status && updates.status !== 'done') {
+            next.completed_at = null
+          }
+          return next
+        })
+      })
+
+      return { previous }
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) {
+        for (const [key, data] of context.previous) {
+          queryClient.setQueryData(key, data)
+        }
+      }
+    },
+    onSuccess: (_data, variables) => {
+      if (variables.status === 'done') {
+        if (googleSyncEnabled) triggerGoogleSyncAfterCompletion()
+      } else if (googleSyncEnabled) {
+        triggerGoogleSync('push')
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['calendar-events'] })
+      queryClient.invalidateQueries({ queryKey: ['activity'] })
+    },
   })
 
   const softDeleteTask = useMutation({
@@ -106,7 +145,7 @@ export function useTasks(
       if (error) throw error
       await logActivity('task', id, 'deleted')
     },
-    onSuccess: () => { invalidate(); if (googleSyncEnabled) triggerGoogleSync('full') },
+    onSuccess: () => { invalidate(); if (googleSyncEnabled) triggerGoogleSync('push') },
   })
 
   const restoreTask = useMutation({
@@ -118,7 +157,7 @@ export function useTasks(
       if (error) throw error
       await logActivity('task', id, 'restored')
     },
-    onSuccess: () => { invalidate(); if (googleSyncEnabled) triggerGoogleSync('full') },
+    onSuccess: () => { invalidate(); if (googleSyncEnabled) triggerGoogleSync('push') },
   })
 
   const archiveTask = useMutation({
@@ -130,7 +169,7 @@ export function useTasks(
       if (error) throw error
       await logActivity('task', id, 'archived')
     },
-    onSuccess: () => { invalidate(); if (googleSyncEnabled) triggerGoogleSync('full') },
+    onSuccess: () => { invalidate(); if (googleSyncEnabled) triggerGoogleSync('push') },
   })
 
   return {

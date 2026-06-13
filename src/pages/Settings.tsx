@@ -336,6 +336,12 @@ export function Settings() {
               description="Show in sidebar"
             />
             <Toggle
+              checked={sidebarPrefs.accountability ?? true}
+              onChange={(v) => setSidebarPrefs((p) => ({ ...p, accountability: v }))}
+              label="Alpha Mode"
+              description="Show in sidebar"
+            />
+            <Toggle
               checked={sidebarPrefs.myTasks}
               onChange={(v) => setSidebarPrefs((p) => ({ ...p, myTasks: v }))}
               label="My Tasks"

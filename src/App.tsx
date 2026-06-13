@@ -15,6 +15,7 @@ import { ProjectBoard } from '@/pages/ProjectBoard'
 import { History } from '@/pages/History'
 import { Sops } from '@/pages/Sops'
 import { Settings } from '@/pages/Settings'
+import { Accountability } from '@/pages/Accountability'
 import { GoogleCallback } from '@/pages/GoogleCallback'
 import { InstallPrompt } from '@/components/InstallPrompt'
 
@@ -41,6 +42,7 @@ export default function App() {
               }
             >
               <Route index element={<HomePage />} />
+              <Route path="accountability" element={<RoleRoute fullAccessOnly><Accountability /></RoleRoute>} />
               <Route path="dashboard" element={<RoleRoute fullAccessOnly><Dashboard /></RoleRoute>} />
               <Route path="checklist" element={<Navigate to="/" replace />} />
               <Route path="tasks" element={<RoleRoute fullAccessOnly><MyTasks /></RoleRoute>} />

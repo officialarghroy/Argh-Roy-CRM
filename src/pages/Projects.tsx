@@ -1,16 +1,18 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { HiOutlineSearch, HiOutlinePlus, HiOutlineViewGrid, HiOutlineViewList } from 'react-icons/hi'
-import { Header } from '@/components/layout/Header'
+import { HiOutlinePlus, HiOutlineViewGrid, HiOutlineViewList } from 'react-icons/hi'
+import { PageShell } from '@/components/layout/PageShell'
 import { usePageLayout } from '@/hooks/usePageLayout'
 import { useProjects } from '@/hooks/useProjects'
 import { useAuth } from '@/contexts/AuthContext'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
-import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { Avatar } from '@/components/ui/Avatar'
+import { GlassPanel } from '@/components/ui/GlassPanel'
+import { SearchField } from '@/components/ui/SearchField'
+import { EmptyState } from '@/components/ui/ListPrimitives'
 import { ProjectLogoPicker } from '@/components/projects/ProjectLogoPicker'
 import { uploadProjectLogo } from '@/lib/storage'
 import { cn } from '@/lib/utils'
@@ -18,10 +20,10 @@ import { useToast } from '@/contexts/ToastContext'
 
 function ProjectLogoThumb({ name, logoUrl, className }: { name: string; logoUrl: string | null; className?: string }) {
   if (logoUrl) {
-    return <img src={logoUrl} alt="" className={cn('object-cover shrink-0', className)} />
+    return <img src={logoUrl} alt="" className={cn('object-cover shrink-0 ring-1 ring-white/10', className)} />
   }
   return (
-    <div className={cn('bg-accent/20 text-accent flex items-center justify-center font-bold shrink-0', className)}>
+    <div className={cn('bg-accent/15 text-accent flex items-center justify-center font-bold shrink-0 ring-1 ring-accent/20', className)}>
       {name[0]}
     </div>
   )
@@ -71,53 +73,53 @@ export function Projects() {
   }
 
   return (
-    <div className="flex flex-col flex-1">
-      <Header
-        title="Projects"
-        onMenuClick={openSidebar}
-        onRefresh={() => refetch()}
-        actions={
-          isAdmin ? (
-            <Button size="sm" onClick={() => setShowNew(true)} aria-label="New project">
-              <HiOutlinePlus className="h-4 w-4" />
-              <span className="hidden sm:inline">New project</span>
-            </Button>
-          ) : undefined
+    <PageShell
+      title="Projects"
+      subtitle={`${filtered.length} workspace${filtered.length === 1 ? '' : 's'}`}
+      onMenuClick={openSidebar}
+      onRefresh={() => refetch()}
+      maxWidth="6xl"
+      actions={
+        isAdmin ? (
+          <Button size="sm" onClick={() => setShowNew(true)} aria-label="New project">
+            <HiOutlinePlus className="h-4 w-4" />
+            <span className="hidden sm:inline">New project</span>
+          </Button>
+        ) : undefined
+      }
+    >
+      <GlassPanel
+        title="All projects"
+        action={
+          <div className="flex glass-pill overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setView('grid')}
+              className={cn('p-2 transition-colors', view === 'grid' ? 'bg-white/10 text-foreground' : 'text-muted hover:bg-white/5')}
+              aria-label="Grid view"
+            >
+              <HiOutlineViewGrid className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setView('list')}
+              className={cn('p-2 transition-colors', view === 'list' ? 'bg-white/10 text-foreground' : 'text-muted hover:bg-white/5')}
+              aria-label="List view"
+            >
+              <HiOutlineViewList className="h-4 w-4" />
+            </button>
+          </div>
         }
-      />
-
-      <div className="flex-1 p-4 lg:p-6 space-y-4">
-        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-          <div className="relative flex-1 max-w-sm">
-            <HiOutlineSearch className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" />
-            <input
-              placeholder="Search projects..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full glass-inset pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40"
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted">{filtered.length} projects</span>
-            <div className="flex glass-pill overflow-hidden">
-              <button
-                onClick={() => setView('grid')}
-                className={cn('p-2', view === 'grid' ? 'bg-white/10 text-foreground' : 'text-muted hover:bg-white/5')}
-              >
-                <HiOutlineViewGrid className="h-4 w-4" />
-              </button>
-              <button
-                onClick={() => setView('list')}
-                className={cn('p-2', view === 'list' ? 'bg-white/10 text-foreground' : 'text-muted hover:bg-white/5')}
-              >
-                <HiOutlineViewList className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
-        </div>
-
+        toolbar={
+          <SearchField
+            value={search}
+            onChange={setSearch}
+            placeholder="Search projects..."
+          />
+        }
+      >
         {isAdmin && showNew && (
-          <Card>
+          <div className="px-5 py-4 border-b border-white/10 bg-white/[0.02]">
             <form onSubmit={handleCreate} className="space-y-4">
               <ProjectLogoPicker
                 name={newName || 'Project'}
@@ -139,79 +141,82 @@ export function Projects() {
                   <Button type="submit" disabled={!newName.trim() || creating} className="flex-1 sm:flex-none min-h-[44px]">
                     {creating ? 'Creating...' : 'Create'}
                   </Button>
-                  <Button type="button" variant="ghost" onClick={resetNewProjectForm} className="flex-1 sm:flex-none min-h-[44px]">Cancel</Button>
+                  <Button type="button" variant="ghost" onClick={resetNewProjectForm} className="flex-1 sm:flex-none min-h-[44px]">
+                    Cancel
+                  </Button>
                 </div>
               </div>
             </form>
-          </Card>
+          </div>
         )}
 
         {isLoading ? (
-          <div className="text-center text-muted py-12">Loading projects...</div>
+          <EmptyState message="Loading projects..." />
         ) : filtered.length === 0 ? (
-          <Card className="text-center py-12">
-            <p className="text-muted mb-4">No projects yet</p>
-            <Button onClick={() => setShowNew(true)}>
-              <HiOutlinePlus className="h-4 w-4" />
-              Create your first project
-            </Button>
-          </Card>
+          <EmptyState
+            message="No projects yet"
+            action={
+              isAdmin ? (
+                <Button size="sm" onClick={() => setShowNew(true)}>
+                  <HiOutlinePlus className="h-4 w-4" />
+                  Create your first project
+                </Button>
+              ) : undefined
+            }
+          />
         ) : view === 'grid' ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 p-4 sm:p-5 sm:pt-4">
             {filtered.map((project) => (
-              <Link key={project.id} to={`/projects/${project.slug}`}>
-                <Card className="hover:border-accent/50 transition-colors cursor-pointer h-full">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                      <ProjectLogoThumb name={project.name} logoUrl={project.logo_url} className="h-10 w-10 rounded-lg" />
-                      <h3 className="font-semibold text-foreground truncate">{project.name}</h3>
+              <Link key={project.id} to={`/projects/${project.slug}`} className="block p-1">
+                <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4 h-full transition-all duration-150 hover:bg-white/[0.04] hover:border-white/16 hover:ring-1 hover:ring-white/10">
+                  <div className="flex items-start justify-between gap-2 mb-4">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <ProjectLogoThumb name={project.name} logoUrl={project.logo_url} className="h-10 w-10 rounded-xl" />
+                      <h3 className="font-semibold text-foreground truncate font-display">{project.name}</h3>
                     </div>
                     {project.user_id !== user?.id && (
-                      <Badge variant="warning">Shared with you</Badge>
+                      <Badge variant="warning">Shared</Badge>
                     )}
                   </div>
-
                   <div className="space-y-2">
-                    <div className="flex items-center justify-between text-sm">
+                    <div className="flex items-center justify-between text-xs">
                       <span className="text-muted">Your tasks</span>
-                      <span className="font-medium text-foreground">
-                        {project.completed_tasks} / {project.total_tasks}
+                      <span className="font-medium tabular-nums">
+                        {project.completed_tasks}/{project.total_tasks}
                       </span>
                     </div>
-                    <ProgressBar value={project.completed_tasks} max={project.total_tasks || 1} />
+                    <ProgressBar value={project.completed_tasks} max={project.total_tasks || 1} className="h-1" />
                   </div>
-
-                  <div className="flex items-center gap-2 mt-4 pt-4 border-t border-white/10">
-                    <Avatar
-                      src={profile?.avatar_url}
-                      name={profile?.display_name ?? 'You'}
-                      size="sm"
-                    />
-                    <span className="text-xs text-muted">{profile?.display_name ?? 'You'}</span>
+                  <div className="flex items-center gap-2 mt-4 pt-3 border-t border-white/8">
+                    <Avatar src={profile?.avatar_url} name={profile?.display_name ?? 'You'} size="sm" />
+                    <span className="text-xs text-muted truncate">{profile?.display_name ?? 'You'}</span>
                   </div>
-                </Card>
+                </div>
               </Link>
             ))}
           </div>
         ) : (
-          <div className="space-y-2">
+          <ul>
             {filtered.map((project) => (
-              <Link key={project.id} to={`/projects/${project.slug}`}>
-                <Card className="flex items-center gap-4 hover:border-accent/50 transition-colors py-3">
-                  <ProjectLogoThumb name={project.name} logoUrl={project.logo_url} className="h-8 w-8 rounded-lg text-sm" />
+              <li key={project.id} className="border-b border-white/[0.06] last:border-b-0">
+                <Link
+                  to={`/projects/${project.slug}`}
+                  className="flex items-center gap-4 px-5 py-3.5 hover:bg-white/[0.02] transition-colors"
+                >
+                  <ProjectLogoThumb name={project.name} logoUrl={project.logo_url} className="h-9 w-9 rounded-lg text-sm" />
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium text-foreground">{project.name}</p>
-                    <p className="text-xs text-muted">{project.completed_tasks}/{project.total_tasks} tasks done</p>
+                    <p className="font-medium text-foreground font-display">{project.name}</p>
+                    <p className="text-[11px] text-muted mt-0.5 tabular-nums">
+                      {project.completed_tasks}/{project.total_tasks} tasks done
+                    </p>
                   </div>
-                  {project.user_id !== user?.id && (
-                    <Badge variant="warning">Shared</Badge>
-                  )}
-                </Card>
-              </Link>
+                  {project.user_id !== user?.id && <Badge variant="warning">Shared</Badge>}
+                </Link>
+              </li>
             ))}
-          </div>
+          </ul>
         )}
-      </div>
-    </div>
+      </GlassPanel>
+    </PageShell>
   )
 }
