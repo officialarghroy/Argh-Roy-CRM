@@ -10,6 +10,7 @@ import {
 import { PageShell } from '@/components/layout/PageShell'
 import { usePageLayout } from '@/hooks/usePageLayout'
 import { useAuth } from '@/contexts/AuthContext'
+import { DEFAULT_SIDEBAR_PREFS } from '@/types/database'
 import { useChecklist } from '@/hooks/useChecklist'
 import { getChecklistDate } from '@/lib/checklistDay'
 import { useTasks } from '@/hooks/useTasks'
@@ -26,6 +27,7 @@ import { cn } from '@/lib/utils'
 export function Dashboard() {
   const { openSidebar } = usePageLayout()
   const { profile, canAccessCalendar } = useAuth()
+  const prefs = { ...DEFAULT_SIDEBAR_PREFS, ...profile?.sidebar_prefs }
   const today = new Date()
   const checklistDay = getChecklistDate()
   const { data: checklist = [] } = useChecklist(checklistDay)
@@ -152,9 +154,11 @@ export function Dashboard() {
         <GlassPanel
           title="Recently completed"
           toolbar={
-            <Link to="/history" className="text-xs text-accent hover:text-accent-hover -mt-2 block text-right">
-              Full history
-            </Link>
+            prefs.history !== false ? (
+              <Link to="/history" className="text-xs text-accent hover:text-accent-hover -mt-2 block text-right">
+                Full history
+              </Link>
+            ) : undefined
           }
         >
           {activity.length === 0 ? (

@@ -53,7 +53,7 @@ export function ProjectSharingSettings() {
       <CardHeader>
         <CardTitle>Share projects</CardTitle>
         <CardDescription>
-          Invite collaborators to a project. They will only see their own tasks on it, not yours.
+          Invite collaborators to a project. Everyone on a shared project can see and manage all tasks on it. Personal tasks stay private.
         </CardDescription>
       </CardHeader>
 

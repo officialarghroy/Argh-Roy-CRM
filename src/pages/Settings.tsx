@@ -347,7 +347,7 @@ export function Settings() {
               label="My Tasks"
               description="Show in sidebar"
             />
-            {canAccessCalendar && (
+            {isAdmin && canAccessCalendar && (
               <Toggle checked={sidebarPrefs.calendar ?? true} onChange={(v) => setSidebarPrefs((p) => ({ ...p, calendar: v }))} label="Calendar" description="Show in sidebar" />
             )}
             <Toggle
@@ -356,13 +356,17 @@ export function Settings() {
               label="Projects"
               description="Show in sidebar"
             />
-            <Toggle checked={sidebarPrefs.history ?? true} onChange={(v) => setSidebarPrefs((p) => ({ ...p, history: v }))} label="History" description="Show in sidebar" />
-            <Toggle
-              checked={sidebarPrefs.sops}
-              onChange={(v) => setSidebarPrefs((p) => ({ ...p, sops: v }))}
-              label="SOPs"
-              description="Show in sidebar"
-            />
+            {isAdmin && (
+              <Toggle checked={sidebarPrefs.history ?? true} onChange={(v) => setSidebarPrefs((p) => ({ ...p, history: v }))} label="History" description="Show in sidebar" />
+            )}
+            {isAdmin && (
+              <Toggle
+                checked={sidebarPrefs.sops}
+                onChange={(v) => setSidebarPrefs((p) => ({ ...p, sops: v }))}
+                label="SOPs"
+                description="Show in sidebar"
+              />
+            )}
           </div>
 
           <div className="flex justify-end mt-6">

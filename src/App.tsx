@@ -49,8 +49,8 @@ export default function App() {
               <Route path="calendar" element={<RoleRoute fullAccessOnly calendarOnly><Calendar /></RoleRoute>} />
               <Route path="projects" element={<Projects />} />
               <Route path="projects/:slug" element={<ProjectBoard />} />
-              <Route path="history" element={<RoleRoute fullAccessOnly><History /></RoleRoute>} />
-              <Route path="sops" element={<RoleRoute fullAccessOnly><Sops /></RoleRoute>} />
+              <Route path="history" element={<RoleRoute fullAccessOnly requireSidebarKey="history"><History /></RoleRoute>} />
+              <Route path="sops" element={<RoleRoute fullAccessOnly requireSidebarKey="sops"><Sops /></RoleRoute>} />
               <Route path="settings" element={<Settings />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />

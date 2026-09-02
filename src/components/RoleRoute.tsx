@@ -1,5 +1,6 @@
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
+import { DEFAULT_SIDEBAR_PREFS, type SidebarPrefs } from '@/types/database'
 
 interface RoleRouteProps {
   children: React.ReactNode
@@ -7,6 +8,8 @@ interface RoleRouteProps {
   fullAccessOnly?: boolean
   /** Requires calendar permission */
   calendarOnly?: boolean
+  /** Requires this sidebar pref to be enabled */
+  requireSidebarKey?: keyof SidebarPrefs
   redirectTo?: string
 }
 
@@ -14,9 +17,11 @@ export function RoleRoute({
   children,
   fullAccessOnly = false,
   calendarOnly = false,
+  requireSidebarKey,
   redirectTo = '/projects',
 }: RoleRouteProps) {
-  const { loading, hasFullAccess, canAccessCalendar } = useAuth()
+  const { loading, hasFullAccess, canAccessCalendar, profile } = useAuth()
+  const prefs = { ...DEFAULT_SIDEBAR_PREFS, ...profile?.sidebar_prefs }
 
   if (loading) {
     return (
@@ -32,6 +37,10 @@ export function RoleRoute({
 
   if (calendarOnly && !canAccessCalendar) {
     return <Navigate to="/dashboard" replace />
+  }
+
+  if (requireSidebarKey && prefs[requireSidebarKey] === false) {
+    return <Navigate to={redirectTo} replace />
   }
 
   return <>{children}</>
