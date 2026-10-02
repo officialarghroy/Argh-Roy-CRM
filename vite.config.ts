@@ -12,8 +12,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['logo.png', 'favicon.svg', 'apple-touch-icon.png'],
       manifest: {
-        name: 'Argh Roy CRM',
-        short_name: 'Argh Roy CRM',
+        name: 'Builder',
+        short_name: 'Builder',
         description: 'Your personal task and project hub',
         theme_color: '#000000',
         background_color: '#000000',
@@ -42,6 +42,12 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // Take control as soon as a new version is available and discard old
+        // precache entries, preventing a stale HTML shell from pointing at
+        // files that no longer exist after a deploy.
+        cleanupOutdatedCaches: true,
+        clientsClaim: true,
+        skipWaiting: true,
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         navigateFallback: 'index.html',
         navigateFallbackDenylist: [/^\/settings\/google-callback/],

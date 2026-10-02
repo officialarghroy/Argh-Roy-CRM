@@ -22,13 +22,6 @@ export async function isChecklistModeSupported(): Promise<boolean> {
 }
 
 export async function generateChecklistForDate(dateStr: string, mode: ChecklistMode): Promise<void> {
-  if (mode !== 'daily') {
-    const supported = await isChecklistModeSupported()
-    if (!supported) {
-      throw new Error('Alpha Mode requires a database update. Run migration 011_alpha_checklist_mode.sql in Supabase.')
-    }
-  }
-
   const supported = await isChecklistModeSupported()
   const { error } = supported
     ? await supabase.rpc('generate_daily_checklist', { p_date: dateStr, p_mode: mode })
@@ -55,11 +48,7 @@ export async function fetchChecklistItems(dateStr: string, mode: ChecklistMode) 
     .is('deleted_at', null)
     .order('position')
 
-  if (supported) {
-    query = query.eq('mode', mode)
-  } else if (mode !== 'daily') {
-    throw new Error('Alpha Mode requires a database update. Run migration 011_alpha_checklist_mode.sql in Supabase.')
-  }
+  if (supported) query = query.eq('mode', mode)
 
   const { data, error } = await query
   if (error) throw new Error(formatSupabaseError(error))

@@ -4,11 +4,10 @@ export type UserRole = 'admin' | 'collaborator'
 export type EntityType = 'task' | 'checklist' | 'project' | 'sop' | 'checklist_template'
 export type ActivityAction = 'created' | 'updated' | 'completed' | 'uncompleted' | 'archived' | 'restored' | 'deleted' | 'scheduled' | 'synced'
 
-export type ChecklistMode = 'daily' | 'alpha'
+export type ChecklistMode = 'daily'
 
 export interface SidebarPrefs {
   dailyChecklist: boolean
-  accountability: boolean
   myTasks: boolean
   projects: boolean
   sops: boolean
@@ -199,7 +198,6 @@ export const TASK_STATUS_COLORS: Record<TaskStatus, string> = {
 export const DEFAULT_SIDEBAR_PREFS: SidebarPrefs = {
   dashboard: true,
   dailyChecklist: true,
-  accountability: true,
   myTasks: true,
   projects: true,
   calendar: true,

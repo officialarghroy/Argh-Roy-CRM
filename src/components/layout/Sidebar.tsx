@@ -9,7 +9,6 @@ import {
   HiOutlineHome,
   HiOutlineCalendar,
   HiOutlineClock,
-  HiOutlineShieldCheck,
 } from 'react-icons/hi'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
@@ -22,7 +21,6 @@ type NavKey = typeof DEFAULT_SIDEBAR_PREFS extends Record<infer K, boolean> ? K 
 
 const navItems: { key: NavKey; to: string; label: string; icon: typeof HiOutlineHome }[] = [
   { key: 'dailyChecklist', to: '/', label: 'Daily Checklist', icon: HiOutlineClipboardList },
-  { key: 'accountability', to: '/accountability', label: 'Alpha Mode', icon: HiOutlineShieldCheck },
   { key: 'dashboard', to: '/dashboard', label: 'Dashboard', icon: HiOutlineHome },
   { key: 'myTasks', to: '/tasks', label: 'My Tasks', icon: HiOutlineCheckCircle },
   { key: 'calendar', to: '/calendar', label: 'Calendar', icon: HiOutlineCalendar },

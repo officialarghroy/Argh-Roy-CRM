@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { HiOutlineGlobe, HiOutlineViewBoards, HiOutlineSave, HiOutlineTrash, HiOutlineCalendar } from 'react-icons/hi'
 import { resetCalendarAndOverdue } from '@/lib/resetCalendarData'
+import { resetAllTasks } from '@/lib/resetTasks'
 import {
   getGoogleAuthUrl,
   getGoogleIntegration,
@@ -53,6 +54,7 @@ export function Settings() {
   const [sidebarPrefs, setSidebarPrefs] = useState<SidebarPrefs>(DEFAULT_SIDEBAR_PREFS)
   const [saving, setSaving] = useState(false)
   const [resetting, setResetting] = useState(false)
+  const [resettingTasks, setResettingTasks] = useState(false)
   const [message, setMessage] = useState('')
   const queryClient = useQueryClient()
 
@@ -314,6 +316,40 @@ export function Settings() {
           </Button>
         </Card>}
 
+        {isAdmin && <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <HiOutlineTrash className="h-5 w-5 text-danger" />
+              <CardTitle>Fresh start for tasks</CardTitle>
+            </div>
+            <CardDescription>
+              Permanently deletes every CRM task, including completed tasks and their task history. Projects and checklist items stay intact. Google sync is paused so synced tasks do not return automatically.
+            </CardDescription>
+          </CardHeader>
+          <Button
+            variant="danger"
+            size="sm"
+            disabled={resettingTasks}
+            onClick={async () => {
+              if (!window.confirm('Permanently delete every CRM task, including completed tasks and task history? Projects and checklist items will remain. This cannot be undone.')) {
+                return
+              }
+              setResettingTasks(true)
+              try {
+                const result = await resetAllTasks()
+                await queryClient.invalidateQueries()
+                getGoogleIntegration().then(setGoogleIntegration)
+                showMessage(`Fresh start complete — ${result.tasks_removed} task(s), ${result.completions_removed} completion record(s), and ${result.history_removed} history entry/entries deleted.`)
+              } catch (err) {
+                showMessage(err instanceof Error ? err.message : 'Task reset failed')
+              }
+              setResettingTasks(false)
+            }}
+          >
+            {resettingTasks ? 'Clearing tasks...' : 'Delete all CRM tasks'}
+          </Button>
+        </Card>}
+
         {isAdmin && <TeamSettings onMessage={showMessage} />}
 
         {isAdmin && <ProjectSharingSettings />}
@@ -333,12 +369,6 @@ export function Settings() {
               checked={sidebarPrefs.dailyChecklist}
               onChange={(v) => setSidebarPrefs((p) => ({ ...p, dailyChecklist: v }))}
               label="Daily Checklist"
-              description="Show in sidebar"
-            />
-            <Toggle
-              checked={sidebarPrefs.accountability ?? true}
-              onChange={(v) => setSidebarPrefs((p) => ({ ...p, accountability: v }))}
-              label="Alpha Mode"
               description="Show in sidebar"
             />
             <Toggle

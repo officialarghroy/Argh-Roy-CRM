@@ -67,14 +67,14 @@ export function Login() {
             Tasks, checklist, projects, and Google sync — built for how you actually work.
           </p>
         </div>
-        <p className="text-xs text-muted/70">Argh Roy CRM</p>
+        <p className="text-xs text-muted/70">Builder</p>
       </div>
 
       <div className="relative z-10 flex-1 flex items-center justify-center p-6 lg:p-12">
         <div className="w-full max-w-md page-enter">
           <div className="flex flex-col items-center mb-8 lg:hidden">
             <AppLogo size="lg" className="mb-4" />
-            <h1 className="text-2xl font-bold text-foreground font-display">Argh Roy CRM</h1>
+            <h1 className="text-2xl font-bold text-foreground font-display">Builder</h1>
           </div>
 
           <GlassPanel

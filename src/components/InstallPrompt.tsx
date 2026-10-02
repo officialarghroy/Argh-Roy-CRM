@@ -79,7 +79,7 @@ export function InstallPrompt() {
         <div className="glass-card flex items-center gap-3 p-4 shadow-xl border-accent/30">
           <img src="/pwa-192.png" alt="" className="h-11 w-11 rounded-xl shrink-0" />
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-foreground">Install Argh Roy CRM</p>
+            <p className="text-sm font-semibold text-foreground">Install Builder</p>
             <p className="text-xs text-muted mt-0.5">Add to your home screen for quick access.</p>
           </div>
           <div className="flex items-center gap-1 shrink-0">

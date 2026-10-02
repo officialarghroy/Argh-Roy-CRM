@@ -17,10 +17,10 @@ export function AppLogo({ size = 'sm', showText = false, className }: AppLogoPro
     <div className={cn('flex items-center gap-2.5', className)}>
       <img
         src="/logo.png"
-        alt="Argh Roy CRM"
+        alt="Builder"
         className={cn('shrink-0 rounded-full object-cover', sizes[size])}
       />
-      {showText && <span className="font-semibold text-foreground">Argh Roy CRM</span>}
+      {showText && <span className="font-semibold text-foreground">Builder</span>}
     </div>
   )
 }
